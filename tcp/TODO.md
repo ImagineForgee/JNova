@@ -11,9 +11,9 @@
 
 ### 2. **Protocol & Message Handling**
 
-* [ ] **Support multiple framing protocols:**
+* [x] **Support multiple framing protocols:**
 
-  * Line-based (current)
+  * Line-based
   * Length-prefixed messages
   * Delimiter-based (custom delimiters)
 * [ ] **Binary message support:** handle byte streams, not just text

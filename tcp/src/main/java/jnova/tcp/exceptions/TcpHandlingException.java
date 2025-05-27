@@ -1,4 +1,4 @@
-package jnova.tcp.Exceptions;
+package jnova.tcp.exceptions;
 
 public class TcpHandlingException extends Exception {
 

@@ -1,13 +1,15 @@
 package jnova.tcp;
 
 import jnova.core.Server;
-import reactor.core.publisher.Flux;
+import jnova.tcp.framing.FramingStrategy;
+import jnova.tcp.framing.LineFraming;
+import jnova.tcp.request.TcpRequest;
+import jnova.tcp.request.TcpRequestHandler;
 import reactor.core.publisher.Mono;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +19,7 @@ import java.util.concurrent.Executors;
 
 public class TcpServer implements Server {
     private ServerSocket serverSocket;
+    private final FramingStrategy framingStrategy;
     private final ExecutorService threadPool;
     private final Map<String, TcpSession> sessionMap = new ConcurrentHashMap<>();
     private volatile boolean running = false;
@@ -24,12 +27,13 @@ public class TcpServer implements Server {
     private final TcpRequestHandler handler;
 
     public TcpServer(TcpRequestHandler handler) {
-        this(handler, Executors.newCachedThreadPool());
+        this(handler, Executors.newCachedThreadPool(), new LineFraming());
     }
 
-    public TcpServer(TcpRequestHandler handler, ExecutorService executorService) {
+    public TcpServer(TcpRequestHandler handler, ExecutorService pool, FramingStrategy framingStrategy) {
         this.handler = handler;
-        this.threadPool = executorService;
+        this.threadPool = pool;
+        this.framingStrategy = framingStrategy;
     }
 
     @Override
@@ -47,40 +51,17 @@ public class TcpServer implements Server {
     private void handleClient(Socket socket) {
         String sessionId = UUID.randomUUID().toString();
         System.out.println("New connection [" + sessionId + "] from " + socket.getInetAddress());
-
         CountDownLatch latch = new CountDownLatch(1);
 
-        try (TcpSession session = new TcpSession(socket, sessionId);
-             BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))
-        ) {
+        try (TcpSession session = new TcpSession(socket, sessionId)) {
             sessionMap.put(sessionId, session);
-            Flux<String> linesFlux = Flux.<String>create(emitter -> {
-                        try {
-                            String line;
-                            while ((line = reader.readLine()) != null && !emitter.isCancelled()) {
-                                emitter.next(line);
-                            }
-                            emitter.complete();
-                        } catch (IOException e) {
-                            emitter.error(e);
-                        }
-                    })
-                    .doOnCancel(() -> System.out.println("[" + sessionId + "] Input reading cancelled"))
-                    .doOnComplete(() -> {
-                        System.out.println("[" + sessionId + "] Input reading completed");
-                        latch.countDown();
-                    })
-                    .doOnError(e -> {
-                        System.err.println("[" + sessionId + "] Input reading failed: " + e.getMessage());
-                        latch.countDown();
-                    });
-
-            linesFlux
-                    .flatMapSequential(line -> {
+            framingStrategy.readMessages(
+                    socket.getInputStream(),
+                    line -> {
                         System.out.println("[" + sessionId + "] Received: " + line);
                         TcpRequest request = new TcpRequest(line, session);
 
-                        return handler.handle(request)
+                        handler.handle(request)
                                 .flatMap(response -> {
                                     if (response != null && response.getBody() != null) {
                                         return session.send(response.getBody());
@@ -90,27 +71,32 @@ public class TcpServer implements Server {
                                 .onErrorResume(e -> {
                                     System.err.println("[" + sessionId + "] Handler error: " + e.getMessage());
                                     return Mono.empty();
-                                });
-                    })
-                    .doFinally(signal -> {
-                        sessionMap.remove(sessionId);
-                        System.out.println("[" + sessionId + "] Session closing due to: " + signal);
-                        try {
-                            session.close();
-                        } catch (IOException e) {
-                            System.err.println("[" + sessionId + "] Error during session close: " + e.getMessage());
-                        }
-                    })
-                    .subscribe();
+                                })
+                                .doOnTerminate(() -> latch.countDown())
+                                .subscribe();
+                    },
+                    error -> {
+                        System.err.println("[" + sessionId + "] Input reading failed: " + error.getMessage());
+                        latch.countDown();
+                    }
+            );
             latch.await();
-
         } catch (IOException e) {
             System.err.println("[" + sessionId + "] Connection error: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             System.err.println("[" + sessionId + "] Thread interrupted: " + e.getMessage());
+        } finally {
+            sessionMap.remove(sessionId);
+            System.out.println("[" + sessionId + "] Session closing.");
+            try {
+                socket.close();
+            } catch (IOException e) {
+                System.err.println("[" + sessionId + "] Error during socket close: " + e.getMessage());
+            }
         }
     }
+
 
     @Override
     public void stop() throws IOException {

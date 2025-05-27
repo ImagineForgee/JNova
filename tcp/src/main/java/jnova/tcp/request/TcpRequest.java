@@ -1,4 +1,6 @@
-package jnova.tcp;
+package jnova.tcp.request;
+
+import jnova.tcp.TcpSession;
 
 public class TcpRequest {
     private final String body;
