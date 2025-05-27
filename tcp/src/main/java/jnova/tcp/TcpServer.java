@@ -3,6 +3,7 @@ package jnova.tcp;
 import jnova.core.Server;
 import jnova.tcp.framing.FramingStrategy;
 import jnova.tcp.framing.LineFraming;
+import jnova.tcp.request.TcpBinaryRequest;
 import jnova.tcp.request.TcpRequest;
 import jnova.tcp.request.TcpRequestHandler;
 import reactor.core.publisher.Mono;
@@ -55,31 +56,16 @@ public class TcpServer implements Server {
 
         try (TcpSession session = new TcpSession(socket, sessionId)) {
             sessionMap.put(sessionId, session);
-            framingStrategy.readMessages(
-                    socket.getInputStream(),
-                    line -> {
-                        System.out.println("[" + sessionId + "] Received: " + line);
-                        TcpRequest request = new TcpRequest(line, session);
-
-                        handler.handle(request)
-                                .flatMap(response -> {
-                                    if (response != null && response.getBody() != null) {
-                                        return session.send(response.getBody());
-                                    }
-                                    return Mono.empty();
-                                })
-                                .onErrorResume(e -> {
-                                    System.err.println("[" + sessionId + "] Handler error: " + e.getMessage());
-                                    return Mono.empty();
-                                })
-                                .doOnTerminate(() -> latch.countDown())
-                                .subscribe();
-                    },
-                    error -> {
-                        System.err.println("[" + sessionId + "] Input reading failed: " + error.getMessage());
-                        latch.countDown();
-                    }
-            );
+            InputStream in = socket.getInputStream();
+            framingStrategy.readMessages(in, messageBytes -> {
+                TcpBinaryRequest request = new TcpBinaryRequest(messageBytes, session);
+                handler.handle(request)
+                        .flatMap(response -> session.send(response.getBytes()))
+                        .subscribe();
+            }, error -> {
+                System.err.println("[" + sessionId + "] Error reading: " + error.getMessage());
+                latch.countDown();
+            });
             latch.await();
         } catch (IOException e) {
             System.err.println("[" + sessionId + "] Connection error: " + e.getMessage());
@@ -104,7 +90,7 @@ public class TcpServer implements Server {
         if (serverSocket != null) serverSocket.close();
         System.out.println("Notifying clients about shutdown...");
         sessionMap.forEach((id, session) -> {
-            session.send("Server is shutting down. Goodbye!")
+            session.send("Server is shutting down. Goodbye!".getBytes())
                     .doOnTerminate(() -> {
                         try {
                             session.close();

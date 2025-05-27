@@ -7,15 +7,22 @@ import reactor.core.publisher.Mono;
 
 public class Main {
     public static void main(String[] args) throws Exception {
-        TcpRequestHandler handler = request -> {
-            String input = request.getBody();
-            String sessionId = request.getSession().getSessionId();
+        TcpRequestHandler handler = binaryRequest -> {
+            byte[] input = binaryRequest.getData();
+            String sessionId = binaryRequest.getSession().getSessionId();
+            String string = new String(input);
 
-            String response = "[" + sessionId + "] You sent: " + input.toUpperCase();
-            return Mono.just(new TcpResponse(response));
+            System.out.println(string);
+
+            byte[] uppercased = String.format("[%s] %s", sessionId, string)
+                    .toUpperCase()
+                    .getBytes();
+
+            return Mono.just(new TcpResponse(uppercased));
         };
 
         TcpServer server = new TcpServer(handler);
         server.start(7070);
     }
+
 }

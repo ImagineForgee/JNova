@@ -9,11 +9,11 @@ import java.util.function.Consumer;
 public class LineFraming implements FramingStrategy {
 
     @Override
-    public void readMessages(InputStream input, Consumer<String> onMessage, Consumer<Throwable> onError) {
+    public void readMessages(InputStream input, Consumer<byte[]> onMessage, Consumer<Throwable> onError) {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                onMessage.accept(line);
+                onMessage.accept(line.getBytes());
             }
         } catch (Throwable e) {
             onError.accept(e);

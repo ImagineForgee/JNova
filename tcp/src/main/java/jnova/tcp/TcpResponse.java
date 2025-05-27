@@ -1,13 +1,13 @@
 package jnova.tcp;
 
 public class TcpResponse {
-    private final String body;
+    private final byte[] body;
 
-    public TcpResponse(String body) {
+    public TcpResponse(byte[] body) {
         this.body = body;
     }
 
-    public String getBody() {
+    public byte[] getBytes() {
         return body;
     }
 }

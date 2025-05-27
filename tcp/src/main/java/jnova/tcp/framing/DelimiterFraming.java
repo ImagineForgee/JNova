@@ -11,13 +11,13 @@ public class DelimiterFraming implements FramingStrategy {
     }
 
     @Override
-    public void readMessages(InputStream input, Consumer<String> onMessage, Consumer<Throwable> onError) {
+    public void readMessages(InputStream input, Consumer<byte[]> onMessage, Consumer<Throwable> onError) {
         try {
             StringBuilder buffer = new StringBuilder();
             int b;
             while ((b = input.read()) != -1) {
                 if (b == delimiter) {
-                    onMessage.accept(buffer.toString());
+                    onMessage.accept(buffer.toString().getBytes());
                     buffer.setLength(0);
                 } else {
                     buffer.append((char) b);

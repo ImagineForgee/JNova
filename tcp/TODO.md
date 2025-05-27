@@ -16,7 +16,7 @@
   * Line-based
   * Length-prefixed messages
   * Delimiter-based (custom delimiters)
-* [ ] **Binary message support:** handle byte streams, not just text
+* [x] **Binary message support:** handle byte streams, not just text
 * [ ] **Idle timeout handling:** disconnect inactive clients after timeout
 
 * [ ] **Close sessions on idle:** automatically close sessions if no data is received within a configurable time window

@@ -31,21 +31,19 @@ public class TcpSession implements AutoCloseable {
         return socket.getInetAddress().getHostAddress();
     }
 
-    public Mono<Void> send(String message) {
+    public Mono<Void> send(byte[] data) {
         return Mono.create(sink -> {
             if (closed) {
                 sink.error(new IllegalStateException("Session already closed"));
                 return;
             }
-
             sendExecutor.submit(() -> {
                 try {
-                    writer.write(message);
-                    writer.write("\n");
-                    writer.flush();
+                    socket.getOutputStream().write(data);
+                    socket.getOutputStream().flush();
                     sink.success();
                 } catch (IOException e) {
-                    sink.error(new IOException("Failed to send message to session " + sessionId, e));
+                    sink.error(e);
                 }
             });
         });
