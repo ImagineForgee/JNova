@@ -4,19 +4,16 @@ import jnova.core.Server;
 import jnova.tcp.framing.FramingStrategy;
 import jnova.tcp.framing.LineFraming;
 import jnova.tcp.request.TcpBinaryRequest;
-import jnova.tcp.request.TcpRequest;
 import jnova.tcp.request.TcpRequestHandler;
 import reactor.core.publisher.Mono;
 
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 public class TcpServer implements Server {
     private ServerSocket serverSocket;
@@ -24,6 +21,9 @@ public class TcpServer implements Server {
     private final ExecutorService threadPool;
     private final Map<String, TcpSession> sessionMap = new ConcurrentHashMap<>();
     private volatile boolean running = false;
+
+    private final Duration idleTimeout = Duration.ofSeconds(30);
+    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     private final TcpRequestHandler handler;
 
@@ -52,36 +52,54 @@ public class TcpServer implements Server {
     private void handleClient(Socket socket) {
         String sessionId = UUID.randomUUID().toString();
         System.out.println("New connection [" + sessionId + "] from " + socket.getInetAddress());
+
         CountDownLatch latch = new CountDownLatch(1);
 
         try (TcpSession session = new TcpSession(socket, sessionId)) {
             sessionMap.put(sessionId, session);
             InputStream in = socket.getInputStream();
-            framingStrategy.readMessages(in, messageBytes -> {
-                TcpBinaryRequest request = new TcpBinaryRequest(messageBytes, session);
-                handler.handle(request)
-                        .flatMap(response -> session.send(response.getBytes()))
-                        .subscribe();
-            }, error -> {
-                System.err.println("[" + sessionId + "] Error reading: " + error.getMessage());
-                latch.countDown();
-            });
+
+            framingStrategy.readMessages(in)
+                    .timeout(idleTimeout)
+                    .flatMap(messageBytes -> {
+                        TcpBinaryRequest request = new TcpBinaryRequest(messageBytes, session);
+                        return handler.handle(request)
+                                .flatMap(response -> session.send(response.getBytes()))
+                                .onErrorResume(e -> {
+                                    System.err.println("[" + sessionId + "] Handler error: " + e.getMessage());
+                                    return Mono.empty();
+                                });
+                    })
+                    .doOnError(TimeoutException.class, e -> {
+                        System.out.println("[" + sessionId + "] Idle timeout reached. Closing session.");
+                    })
+                    .doOnError(e -> {
+                        if (!(e instanceof TimeoutException)) {
+                            System.err.println("[" + sessionId + "] Unexpected error: " + e.getMessage());
+                        }
+                    })
+                    .doFinally(signal -> {
+                        sessionMap.remove(sessionId);
+                        System.out.println("[" + sessionId + "] Session closing due to: " + signal);
+                        try {
+                            session.close();
+                        } catch (IOException e) {
+                            System.err.println("[" + sessionId + "] Error during session close: " + e.getMessage());
+                        }
+                        latch.countDown();
+                    })
+                    .subscribe();
+
             latch.await();
         } catch (IOException e) {
             System.err.println("[" + sessionId + "] Connection error: " + e.getMessage());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             System.err.println("[" + sessionId + "] Thread interrupted: " + e.getMessage());
-        } finally {
-            sessionMap.remove(sessionId);
-            System.out.println("[" + sessionId + "] Session closing.");
-            try {
-                socket.close();
-            } catch (IOException e) {
-                System.err.println("[" + sessionId + "] Error during socket close: " + e.getMessage());
-            }
         }
     }
+
+
 
 
     @Override

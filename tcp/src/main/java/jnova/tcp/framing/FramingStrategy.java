@@ -1,8 +1,10 @@
 package jnova.tcp.framing;
 
+import reactor.core.publisher.Flux;
+
 import java.io.InputStream;
 import java.util.function.Consumer;
 
 public interface FramingStrategy {
-    void readMessages(InputStream input, Consumer<byte[]> onMessage, Consumer<Throwable> onError);
+    Flux<byte[]> readMessages(InputStream input);
 }

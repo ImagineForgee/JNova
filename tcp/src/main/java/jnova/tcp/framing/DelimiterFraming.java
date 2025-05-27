@@ -1,5 +1,8 @@
 package jnova.tcp.framing;
 
+import reactor.core.publisher.Flux;
+
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.function.Consumer;
 
@@ -11,20 +14,23 @@ public class DelimiterFraming implements FramingStrategy {
     }
 
     @Override
-    public void readMessages(InputStream input, Consumer<byte[]> onMessage, Consumer<Throwable> onError) {
-        try {
-            StringBuilder buffer = new StringBuilder();
-            int b;
-            while ((b = input.read()) != -1) {
-                if (b == delimiter) {
-                    onMessage.accept(buffer.toString().getBytes());
-                    buffer.setLength(0);
-                } else {
-                    buffer.append((char) b);
+    public Flux<byte[]> readMessages(InputStream input) {
+        return Flux.create(sink -> {
+            try {
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                int b;
+                while ((b = input.read()) != -1 && !sink.isCancelled()) {
+                    if (b == delimiter) {
+                        sink.next(buffer.toByteArray());
+                        buffer.reset();
+                    } else {
+                        buffer.write(b);
+                    }
                 }
+                sink.complete();
+            } catch (Throwable e) {
+                sink.error(e);
             }
-        } catch (Throwable e) {
-            onError.accept(e);
-        }
+        });
     }
 }
