@@ -1,10 +1,12 @@
 package jnova.tcp;
 
 import jnova.core.Server;
+import jnova.core.events.EventBus;
+import jnova.tcp.events.TcpServerStartEvent;
 import jnova.tcp.framing.FramingStrategy;
 import jnova.tcp.framing.LineFraming;
 import jnova.tcp.request.TcpBinaryRequest;
-import jnova.tcp.request.TcpRequestHandler;
+import jnova.tcp.handler.TcpRequestHandler;
 import reactor.core.publisher.Mono;
 
 import java.io.*;
@@ -15,7 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
 
-public class TcpServer implements Server {
+public class TcpServer extends Server {
     private ServerSocket serverSocket;
     private final FramingStrategy framingStrategy;
     private final ExecutorService threadPool;
@@ -23,9 +25,10 @@ public class TcpServer implements Server {
     private volatile boolean running = false;
 
     private final Duration idleTimeout = Duration.ofSeconds(30);
-    private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
 
     private final TcpRequestHandler handler;
+
+    private final EventBus eventBus = getEventBus();
 
     public TcpServer(TcpRequestHandler handler) {
         this(handler, Executors.newCachedThreadPool(), new LineFraming());
@@ -42,7 +45,7 @@ public class TcpServer implements Server {
         serverSocket = new ServerSocket(port);
         running = true;
         System.out.println("JNova TCP Server listening on port " + port);
-
+        eventBus.emit(new TcpServerStartEvent(port, serverSocket.getInetAddress()));
         while (running) {
             Socket client = serverSocket.accept();
             threadPool.submit(() -> handleClient(client));

@@ -2,57 +2,51 @@ package jnova.tcp;
 
 import reactor.core.publisher.Mono;
 
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.net.Socket;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicLong;
 
-public class TcpSession implements AutoCloseable {
+public class TcpSession implements Closeable {
     private final Socket socket;
     private final String sessionId;
-    private final BufferedWriter writer;
-    private volatile boolean closed = false;
-
-    private static final ExecutorService sendExecutor = Executors.newCachedThreadPool();
+    private final OutputStream output;
+    private final AtomicLong lastKeepAlive = new AtomicLong(System.currentTimeMillis());
 
     public TcpSession(Socket socket, String sessionId) throws IOException {
         this.socket = socket;
         this.sessionId = sessionId;
-        this.writer = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream()));
-    }
-
-    public String getSessionId() {
-        return sessionId;
-    }
-
-    public String getClientAddress() {
-        return socket.getInetAddress().getHostAddress();
+        this.output = socket.getOutputStream();
     }
 
     public Mono<Void> send(byte[] data) {
-        return Mono.create(sink -> {
-            if (closed) {
-                sink.error(new IllegalStateException("Session already closed"));
-                return;
+        return Mono.fromRunnable(() -> {
+            try {
+                output.write(data);
+                output.flush();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
             }
-            sendExecutor.submit(() -> {
-                try {
-                    socket.getOutputStream().write(data);
-                    socket.getOutputStream().flush();
-                    sink.success();
-                } catch (IOException e) {
-                    sink.error(e);
-                }
-            });
         });
+    }
+
+    public void keepAlive() {
+        lastKeepAlive.set(System.currentTimeMillis());
+    }
+
+    public long getLastKeepAlive() {
+        return lastKeepAlive.get();
+    }
+
+    public boolean isAlive() {
+        return !socket.isClosed();
+    }
+
+    public String getId() {
+        return sessionId;
     }
 
     @Override
     public void close() throws IOException {
-        closed = true;
-        writer.close();
         socket.close();
     }
 }

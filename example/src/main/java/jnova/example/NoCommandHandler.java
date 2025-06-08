@@ -1,15 +1,15 @@
 package jnova.example;
 
-import jnova.tcp.request.TcpRequestHandler;
+import jnova.tcp.handler.TcpRequestHandler;
 import jnova.tcp.TcpResponse;
 import jnova.tcp.TcpServer;
 import reactor.core.publisher.Mono;
 
-public class Main {
+public class NoCommandHandler {
     public static void main(String[] args) throws Exception {
         TcpRequestHandler handler = binaryRequest -> {
             byte[] input = binaryRequest.getData();
-            String sessionId = binaryRequest.getSession().getSessionId();
+            String sessionId = binaryRequest.getSession().getId();
             String string = new String(input);
 
             System.out.println(string);
@@ -24,5 +24,4 @@ public class Main {
         TcpServer server = new TcpServer(handler);
         server.start(7070);
     }
-
 }

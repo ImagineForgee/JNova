@@ -1,6 +1,8 @@
-package jnova.tcp.request;
+package jnova.tcp.handler;
 
 import jnova.tcp.TcpResponse;
+import jnova.tcp.request.TcpBinaryRequest;
+import jnova.tcp.request.TcpRequest;
 import reactor.core.publisher.Mono;
 
 public interface TcpRequestHandler {
