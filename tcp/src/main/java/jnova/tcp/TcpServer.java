@@ -1,8 +1,10 @@
 package jnova.tcp;
 
 import jnova.core.Server;
+import jnova.core.events.EventBuilder;
 import jnova.core.events.EventBus;
-import jnova.tcp.events.TcpServerStartEvent;
+import jnova.core.events.EventType;
+import jnova.core.events.impl.ServerStartEvent;
 import jnova.tcp.framing.FramingStrategy;
 import jnova.tcp.framing.LineFraming;
 import jnova.tcp.request.TcpBinaryRequest;
@@ -45,7 +47,12 @@ public class TcpServer extends Server {
         serverSocket = new ServerSocket(port);
         running = true;
         System.out.println("JNova TCP Server listening on port " + port);
-        eventBus.emit(new TcpServerStartEvent(port, serverSocket.getInetAddress()));
+        ServerStartEvent startEvent = EventBuilder.ofType(EventType.SERVER_START, ServerStartEvent::new)
+                .fromSource(this)
+                .with("port", port)
+                .with("address", serverSocket.getInetAddress())
+                .build();
+        eventBus.emit(startEvent);
         while (running) {
             Socket client = serverSocket.accept();
             threadPool.submit(() -> handleClient(client));

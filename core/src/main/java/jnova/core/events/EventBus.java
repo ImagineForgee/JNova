@@ -7,17 +7,19 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class EventBus {
-    private final Map<Class<?>, Sinks.Many<Object>> sinks = new ConcurrentHashMap<>();
+    private final Map<Class<?>, Sinks.Many<?>> sinks = new ConcurrentHashMap<>();
 
     @SuppressWarnings("unchecked")
-    public <T> Flux<T> onEvent(Class<T> eventType) {
-        return (Flux<T>) sinks
-                .computeIfAbsent(eventType, key -> Sinks.many().multicast().onBackpressureBuffer())
+    public <T extends Event> Flux<T> onEvent(Class<T> eventType) {
+        return ((Sinks.Many<T>) sinks
+                .computeIfAbsent(eventType, key -> Sinks.many().multicast().onBackpressureBuffer()))
                 .asFlux();
     }
 
-    public <T> void emit(T event) {
-        sinks.computeIfAbsent(event.getClass(), key -> Sinks.many().multicast().onBackpressureBuffer())
+    @SuppressWarnings("unchecked")
+    public <T extends Event> void emit(T event) {
+        ((Sinks.Many<T>) sinks
+                .computeIfAbsent(event.getClass(), key -> Sinks.many().multicast().onBackpressureBuffer()))
                 .tryEmitNext(event);
     }
 }
