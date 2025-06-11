@@ -73,7 +73,6 @@ if __name__ == "__main__":
     client.connect()
 
     time.sleep(1)
-    client.send_command("PING")
     client.send_command("BROADCAST", ["Hello", "from", "Python", "client!"])
 
     try:

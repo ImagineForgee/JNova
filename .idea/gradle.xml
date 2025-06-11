@@ -9,10 +9,10 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
-            <option value="$PROJECT_DIR$/annotations" />
-            <option value="$PROJECT_DIR$/core" />
             <option value="$PROJECT_DIR$/example" />
-            <option value="$PROJECT_DIR$/tcp" />
+            <option value="$PROJECT_DIR$/jnova-annotations" />
+            <option value="$PROJECT_DIR$/jnova-core" />
+            <option value="$PROJECT_DIR$/jnova-tcp-server" />
           </set>
         </option>
       </GradleProjectSettings>
