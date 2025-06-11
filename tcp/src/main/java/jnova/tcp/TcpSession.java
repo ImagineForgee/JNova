@@ -17,6 +17,8 @@ public class TcpSession implements Session {
     private final FramingStrategy framingStrategy;
     private final AtomicLong lastKeepAlive = new AtomicLong(System.currentTimeMillis());
     private final Map<String, Object> attributes = new ConcurrentHashMap<>();
+    private Map<String, TcpSession> sessions = new ConcurrentHashMap<>();
+    private final Object writeLock = new Object();
 
     public TcpSession(Socket socket, String sessionId, FramingStrategy framingStrategy) throws IOException {
         this.socket = socket;
@@ -26,16 +28,29 @@ public class TcpSession implements Session {
 
     public Mono<Void> send(byte[] message) {
         return Mono.fromRunnable(() -> {
-            try {
-                framingStrategy.writeMessage(socket.getOutputStream(), message);
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
+            synchronized (writeLock) {
+                try {
+                    framingStrategy.writeMessage(socket.getOutputStream(), message);
+                } catch (IOException e) {
+                    throw new UncheckedIOException(e);
+                }
             }
         });
     }
 
+    public void broadcast(String message) {
+        byte[] data = message.getBytes();
+        for (TcpSession s : sessions.values()) {
+            s.send(data).subscribe();
+        }
+    }
+
+    public void setSessions(Map<String, TcpSession> sessions) {
+        this.sessions = sessions;
+    }
+
     @Override
-    public void keepAlive() {
+    public void touch() {
         lastKeepAlive.set(System.currentTimeMillis());
     }
 

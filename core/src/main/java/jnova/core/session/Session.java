@@ -9,7 +9,7 @@ import java.util.Map;
 public interface Session extends Closeable {
     String getId();
     Mono<Void> send(byte[] data);
-    void keepAlive();
+    void touch();
     long getLastKeepAlive();
     boolean isAlive();
 

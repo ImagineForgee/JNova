@@ -15,6 +15,7 @@ import jnova.tcp.framing.FramingStrategy;
 import jnova.tcp.framing.LineFraming;
 import jnova.tcp.request.TcpBinaryRequest;
 import jnova.tcp.handler.TcpRequestHandler;
+import jnova.tcp.util.KeepAliveMonitor;
 import reactor.core.publisher.Mono;
 
 import java.io.*;
@@ -33,6 +34,7 @@ public class TcpServer extends Server {
     private volatile boolean running = false;
 
     private final Duration idleTimeout = Duration.ofSeconds(30);
+    private KeepAliveMonitor keepAliveMonitor;
 
     private final TcpRequestHandler handler;
 
@@ -54,6 +56,9 @@ public class TcpServer extends Server {
             serverSocket = new ServerSocket(port);
             running = true;
             System.out.println("JNova TCP Server listening on port " + port);
+
+            keepAliveMonitor = new KeepAliveMonitor(sessionMap, idleTimeout);
+            keepAliveMonitor.start();
 
             eventBus.emit(EventBuilder.ofType(EventType.SERVER_START, ServerStartEvent::new)
                     .fromSource(this)
@@ -83,6 +88,10 @@ public class TcpServer extends Server {
             serverSocket.close();
         }
 
+        if (keepAliveMonitor != null) {
+            keepAliveMonitor.stop();
+        }
+
         System.out.println("Notifying clients about shutdown...");
         sessionMap.forEach((id, session) -> {
             session.send("Server is shutting down. Goodbye!".getBytes())
@@ -110,7 +119,7 @@ public class TcpServer extends Server {
 
         try (TcpSession session = new TcpSession(socket, sessionId, framingStrategy)) {
             sessionMap.put(sessionId, session);
-
+            session.setSessions(sessionMap);
             eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_OPEN, TcpSessionOpenEvent::new)
                     .fromSource(session)
                     .with("sessionId", sessionId)
@@ -122,6 +131,8 @@ public class TcpServer extends Server {
             framingStrategy.readMessages(in)
                     .timeout(idleTimeout)
                     .flatMap(messageBytes -> {
+                        session.touch();
+
                         eventBus.emit(EventBuilder.ofType(EventType.TCP_MESSAGE_RECEIVED, TcpMessageReceivedEvent::new)
                                 .fromSource(session)
                                 .with("sessionId", sessionId)
@@ -182,5 +193,4 @@ public class TcpServer extends Server {
             System.err.println("[" + sessionId + "] Thread interrupted: " + e.getMessage());
         }
     }
-
 }
