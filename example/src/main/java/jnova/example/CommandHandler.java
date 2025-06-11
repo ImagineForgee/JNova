@@ -4,19 +4,23 @@ import jnova.core.Server;
 import jnova.core.events.EventBus;
 import jnova.core.events.impl.ServerStartEvent;
 import jnova.tcp.TcpServer;
+import jnova.tcp.events.TcpMessageReceivedEvent;
+import jnova.tcp.framing.DelimiterFraming;
+import jnova.tcp.framing.LengthPrefixedFraming;
 import jnova.tcp.handler.TcpRequestHandler;
 import jnova.tcp.routing.commands.CommandHandlerFactory;
+
+import java.util.Arrays;
+import java.util.concurrent.Executors;
 
 
 public class CommandHandler {
     public static void main(String[] args) throws Exception {
         TcpRequestHandler commandHandler = CommandHandlerFactory.createHandler("jnova.example.commands");
-        TcpServer server = new TcpServer(commandHandler);
+        TcpServer server = new TcpServer(commandHandler, Executors.newCachedThreadPool(), new DelimiterFraming('\n'));
         EventBus eventBus = Server.getEventBus();
-        eventBus.onEvent(ServerStartEvent.class)
-                .subscribe(event -> System.out.printf("TCP server started on port %d at %s%n",
-                        event.getPort(),
-                        event.getTimestamp()));
+        eventBus.onEvent(TcpMessageReceivedEvent.class).subscribe(e ->
+                System.out.println(new String(e.getMessage())));
         server.start(7070);
     }
 }

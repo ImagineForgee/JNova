@@ -8,7 +8,7 @@ def main():
         sock.connect((host, port))
         print(f"Connected to {host}:{port}")
 
-        message = "Hello from Python!\n" 
+        message = "PING\n"
         sock.sendall(message.encode())
 
         response = sock.recv(1024).decode()

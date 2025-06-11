@@ -4,7 +4,8 @@ import reactor.core.publisher.Flux;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
-import java.util.function.Consumer;
+import java.io.OutputStream;
+import java.io.IOException;
 
 public class DelimiterFraming implements FramingStrategy {
     private final byte delimiter;
@@ -32,5 +33,12 @@ public class DelimiterFraming implements FramingStrategy {
                 sink.error(e);
             }
         });
+    }
+
+    @Override
+    public void writeMessage(OutputStream output, byte[] message) throws IOException {
+        output.write(message);
+        output.write(delimiter);
+        output.flush();
     }
 }

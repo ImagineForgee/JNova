@@ -1,6 +1,7 @@
 package jnova.tcp;
 
 import jnova.core.session.Session;
+import jnova.tcp.framing.FramingStrategy;
 import reactor.core.publisher.Mono;
 
 import java.io.*;
@@ -13,22 +14,20 @@ import java.util.concurrent.atomic.AtomicLong;
 public class TcpSession implements Session {
     private final Socket socket;
     private final String sessionId;
-    private final OutputStream output;
+    private final FramingStrategy framingStrategy;
     private final AtomicLong lastKeepAlive = new AtomicLong(System.currentTimeMillis());
     private final Map<String, Object> attributes = new ConcurrentHashMap<>();
 
-    public TcpSession(Socket socket, String sessionId) throws IOException {
+    public TcpSession(Socket socket, String sessionId, FramingStrategy framingStrategy) throws IOException {
         this.socket = socket;
         this.sessionId = sessionId;
-        this.output = socket.getOutputStream();
+        this.framingStrategy = framingStrategy;
     }
 
-    @Override
-    public Mono<Void> send(byte[] data) {
+    public Mono<Void> send(byte[] message) {
         return Mono.fromRunnable(() -> {
             try {
-                output.write(data);
-                output.flush();
+                framingStrategy.writeMessage(socket.getOutputStream(), message);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }

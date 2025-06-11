@@ -2,9 +2,7 @@ package jnova.tcp.framing;
 
 import reactor.core.publisher.Flux;
 
-import java.io.BufferedReader;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.function.Consumer;
 
@@ -23,5 +21,12 @@ public class LineFraming implements FramingStrategy {
                 sink.error(e);
             }
         });
+    }
+
+    @Override
+    public void writeMessage(OutputStream output, byte[] message) throws IOException {
+        output.write(message);
+        output.write('\n');  // newline delimiter
+        output.flush();
     }
 }
