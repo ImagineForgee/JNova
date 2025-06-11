@@ -1,5 +1,5 @@
 rootProject.name = "JNova"
-include("core")
-include("annotations")
-include("tcp")
+include("jnova-core")
+include("jnova-annotations")
+include("jnova-tcp-server")
 include("example")

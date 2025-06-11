@@ -11,8 +11,8 @@ repositories {
 
 dependencies {
 
-    implementation(project(":annotations"))
-    implementation(project(":core"))
-    implementation(project(":tcp"))
+    implementation(project(":jnova-annotations"))
+    implementation(project(":jnova-core"))
+    implementation(project(":jnova-tcp-server"))
     implementation("io.projectreactor:reactor-core:3.8.0-M3")
 }
