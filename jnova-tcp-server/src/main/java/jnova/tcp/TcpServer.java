@@ -7,14 +7,15 @@ import jnova.core.events.EventType;
 import jnova.core.events.impl.ServerErrorEvent;
 import jnova.core.events.impl.ServerStartEvent;
 import jnova.core.events.impl.ServerStopEvent;
+import jnova.tcp.dispatching.TcpMiddleware;
 import jnova.tcp.events.TcpMessageReceivedEvent;
 import jnova.tcp.events.TcpSessionCloseEvent;
 import jnova.tcp.events.TcpSessionErrorEvent;
 import jnova.tcp.events.TcpSessionOpenEvent;
 import jnova.tcp.framing.FramingStrategy;
 import jnova.tcp.framing.LineFraming;
-import jnova.tcp.request.TcpBinaryRequest;
 import jnova.tcp.handler.TcpRequestHandler;
+import jnova.tcp.request.TcpBinaryRequest;
 import jnova.tcp.util.KeepAliveMonitor;
 import reactor.core.publisher.Mono;
 
@@ -22,6 +23,7 @@ import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
@@ -37,17 +39,23 @@ public class TcpServer extends Server {
     private KeepAliveMonitor keepAliveMonitor;
 
     private final TcpRequestHandler handler;
+    private final List<TcpMiddleware> middleware;
 
     private final EventBus eventBus = getEventBus();
 
     public TcpServer(TcpRequestHandler handler) {
-        this(handler, Executors.newCachedThreadPool(), new LineFraming());
+        this(handler, Executors.newCachedThreadPool(), new LineFraming(), List.of());
     }
 
     public TcpServer(TcpRequestHandler handler, ExecutorService pool, FramingStrategy framingStrategy) {
+        this(handler, pool, framingStrategy, List.of());
+    }
+
+    public TcpServer(TcpRequestHandler handler, ExecutorService pool, FramingStrategy framingStrategy, List<TcpMiddleware> middleware) {
         this.handler = handler;
         this.threadPool = pool;
         this.framingStrategy = framingStrategy;
+        this.middleware = middleware != null ? middleware : List.of();
     }
 
     @Override
@@ -120,6 +128,9 @@ public class TcpServer extends Server {
         try (TcpSession session = new TcpSession(socket, sessionId, framingStrategy)) {
             sessionMap.put(sessionId, session);
             session.setSessions(sessionMap);
+
+            middleware.forEach(mw -> mw.onConnect(session));
+
             eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_OPEN, TcpSessionOpenEvent::new)
                     .fromSource(session)
                     .with("sessionId", sessionId)
@@ -143,15 +154,18 @@ public class TcpServer extends Server {
                         return handler.handle(request)
                                 .flatMap(response -> session.send(response.getBytes()))
                                 .onErrorResume(e -> {
+                                    middleware.forEach(mw -> mw.onException(e, null, session));
                                     System.err.println("[" + sessionId + "] Handler error: " + e.getMessage());
                                     return Mono.empty();
                                 });
                     })
                     .doOnError(TimeoutException.class, e -> {
+                        middleware.forEach(mw -> mw.onTimeout(session));
                         System.out.println("[" + sessionId + "] Idle timeout reached. Closing session.");
                     })
                     .doOnError(e -> {
                         if (!(e instanceof TimeoutException)) {
+                            middleware.forEach(mw -> mw.onProtocolError(e, session));
                             System.err.println("[" + sessionId + "] Unexpected error: " + e.getMessage());
                             eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_ERROR, TcpSessionErrorEvent::new)
                                     .fromSource(session)
@@ -163,6 +177,8 @@ public class TcpServer extends Server {
                     .doFinally(signal -> {
                         sessionMap.remove(sessionId);
                         System.out.println("[" + sessionId + "] Session closing due to: " + signal);
+
+                        middleware.forEach(mw -> mw.onDisconnect(session));
 
                         eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_CLOSE, TcpSessionCloseEvent::new)
                                 .fromSource(session)

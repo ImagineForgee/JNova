@@ -49,19 +49,35 @@ class JsonClient:
 
     def ping_loop(self):
         while self.running:
-            self.send_json({"type": "command",
-                            "command": "ping",
-                            "args": []})
+            self.send_json({
+                "type": "command",
+                "command": "PING",
+                "args": []
+            })
             time.sleep(10)
 
     def send_command(self, command, args=None):
-        if args is None:
-            args = []
-        self.send_json({
-            "type": "command",
-            "command": command,
-            "args": args
-        })
+        if command.upper() == "BROADCAST":
+            content = " ".join(args or [])
+            data = {
+                "type": "command",
+                "command": "BROADCAST",
+                "message": {
+                    "type": "message",
+                    "sender": "PythonClient",
+                    "content": content
+                }
+            }
+        else:
+            if args is None:
+                args = []
+            data = {
+                "type": "command",
+                "command": command,
+                "args": args
+            }
+
+        self.send_json(data)
 
     def close(self):
         self.running = False

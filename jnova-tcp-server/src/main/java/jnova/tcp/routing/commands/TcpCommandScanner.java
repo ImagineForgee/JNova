@@ -3,7 +3,6 @@ package jnova.tcp.routing.commands;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ClassInfo;
 import io.github.classgraph.ScanResult;
-
 import jnova.annotations.tcp.TcpCommand;
 
 import java.lang.reflect.Method;

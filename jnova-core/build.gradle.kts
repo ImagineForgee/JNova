@@ -13,6 +13,10 @@ repositories {
 dependencies {
     implementation("io.github.classgraph:classgraph:4.8.179")
     implementation("io.projectreactor:reactor-core:3.8.0-M3")
+
+    implementation("org.hibernate.validator:hibernate-validator:8.0.1.Final")
+    implementation("org.glassfish:jakarta.el:4.0.2")
+    implementation("com.google.code.gson:gson:2.13.1")
 }
 
 publishing {

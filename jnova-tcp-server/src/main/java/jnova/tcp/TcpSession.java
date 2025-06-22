@@ -21,7 +21,6 @@ public class TcpSession implements Session {
     private final Map<String, Object> attributes = new ConcurrentHashMap<>();
     private Map<String, TcpSession> sessions = new ConcurrentHashMap<>();
     private final Object writeLock = new Object();
-    private static final Gson gson = new Gson();
 
     public TcpSession(Socket socket, String sessionId, FramingStrategy framingStrategy) throws IOException {
         this.socket = socket;

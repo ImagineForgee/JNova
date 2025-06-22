@@ -1,13 +1,14 @@
 package jnova.tcp.protocol;
 
 import com.google.gson.Gson;
+import jnova.core.util.GsonFactory;
 
 public class TcpMessage {
     public String type;
     public String from;
     public String content;
 
-    private static final Gson gson = new Gson();
+    private static final Gson gson = GsonFactory.get();
 
     public TcpMessage() {}
 
