@@ -28,6 +28,19 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.*;
 
+/**
+ * A TCP server implementation that handles client connections and processes requests.
+ *
+ * This class extends the {@link Server} abstract class and provides functionality for
+ * accepting client connections, managing sessions, handling requests using a provided
+ * {@link TcpRequestHandler}, and applying middleware for request processing. It uses
+ * a thread pool to handle multiple concurrent client connections and supports configurable
+ * framing strategies for message parsing.
+ *
+ * The server also incorporates a keep-alive mechanism to monitor and close idle sessions,
+ * and utilizes an event bus for publishing various events related to server lifecycle and
+ * session activity.
+ */
 public class TcpServer extends Server {
     private ServerSocket serverSocket;
     private final FramingStrategy framingStrategy;
@@ -43,14 +56,34 @@ public class TcpServer extends Server {
 
     private final EventBus eventBus = getEventBus();
 
+        /**
+     * Constructs a TcpServer with the given request handler, a cached thread pool, line framing, and no initial filters.
+     *
+     * @param handler The request handler to use for processing incoming TCP requests.
+     */
     public TcpServer(TcpRequestHandler handler) {
         this(handler, Executors.newCachedThreadPool(), new LineFraming(), List.of());
     }
 
+        /**
+     * Constructs a new TcpServer with the specified request handler, executor pool, and framing strategy.
+     *
+     * @param handler The request handler to use for processing incoming TCP requests.
+     * @param pool The executor service to use for managing threads that handle requests.
+     * @param framingStrategy The framing strategy to use for delineating messages.
+     */
     public TcpServer(TcpRequestHandler handler, ExecutorService pool, FramingStrategy framingStrategy) {
         this(handler, pool, framingStrategy, List.of());
     }
 
+        /**
+     * Constructs a new TcpServer.
+     *
+     * @param handler The request handler for processing incoming TCP requests.
+     * @param pool The executor service for managing threads.
+     * @param framingStrategy The strategy for framing TCP messages.
+     * @param middleware A list of middleware to be executed on each request. Can be null or empty.
+     */
     public TcpServer(TcpRequestHandler handler, ExecutorService pool, FramingStrategy framingStrategy, List<TcpMiddleware> middleware) {
         this.handler = handler;
         this.threadPool = pool;
@@ -58,6 +91,16 @@ public class TcpServer extends Server {
         this.middleware = middleware != null ? middleware : List.of();
     }
 
+        /**
+     * Starts the TCP server, listening for incoming client connections on the specified port.
+     *
+     * <p>This method initializes the server socket, starts a keep-alive monitor,
+     * and enters a loop to accept and handle client connections.  It also emits
+     * events for server startup and errors.</p>
+     *
+     * @param port The port number to listen on.
+     * @throws IOException If an I/O error occurs while starting the server.
+     */
     @Override
     public void start(int port) throws IOException {
         try {
@@ -89,6 +132,19 @@ public class TcpServer extends Server {
         }
     }
 
+        /**
+     * Stops the TCP server, closing resources and notifying clients.
+     *
+     * This method performs the following actions:
+     * 1. Sets the `running` flag to false, indicating the server is no longer active.
+     * 2. Closes the `serverSocket` to prevent new connections.
+     * 3. Stops the `keepAliveMonitor` to halt keep-alive checks.
+     * 4. Iterates through active sessions, notifying each client about the server shutdown and closing the session.
+     * 5. Shuts down the `threadPool` to terminate active threads.
+     * 6. Emits a `SERVER_STOP` event to the event bus.
+     *
+     * @throws IOException if an error occurs while closing the server socket or client sessions.
+     */
     @Override
     public void stop() throws IOException {
         running = false;
@@ -120,6 +176,15 @@ public class TcpServer extends Server {
                 .build());
     }
 
+        /**
+     * Handles a client connection on the given socket.
+     *
+     * <p>This method manages the lifecycle of a TCP session, including establishing the session,
+     * handling incoming messages, processing requests, sending responses, and closing the session.
+     * It also incorporates middleware for handling connection events, exceptions, timeouts, and protocol errors.
+     *
+     * @param socket The socket representing the client connection.
+     */
     private void handleClient(Socket socket) {
         String sessionId = UUID.randomUUID().toString();
         System.out.println("New connection [" + sessionId + "] from " + socket.getInetAddress());

@@ -17,14 +17,48 @@ import java.lang.reflect.Parameter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class TcpTypeHandlerRegistry {
+/**
+ *  Registry for managing TCP type handlers.
+ *
+ *  This class is responsible for scanning, registering, and providing access to handler methods
+ *  associated with specific TCP types. It utilizes annotations like {@link TcpType}, {@link JsonProperty},
+ *  {@link JsonArg}, and {@link JsonBody} to identify and configure handler methods. It also provides
+ *  argument resolution capabilities using {@link ArgumentResolverRegistry}.
+ */
+public class TcpTypeHandler {
     private final Map<String, List<HandlerMethod>> registry = new ConcurrentHashMap<>();
     private final ArgumentResolverRegistry resolverRegistry;
 
-    public TcpTypeHandlerRegistry(ArgumentResolverRegistry resolverRegistry) {
+        /**
+     * Constructs a TcpTypeHandlerRegistry with the given ArgumentResolverRegistry.
+     *
+     * @param resolverRegistry The ArgumentResolverRegistry to use for resolving arguments.
+     */
+    public TcpTypeHandler(ArgumentResolverRegistry resolverRegistry) {
         this.resolverRegistry = resolverRegistry;
     }
 
+        /**
+     * Scans the specified base package for classes annotated with {@link TcpType} and registers their methods
+     * annotated with {@link JsonProperty} as TCP handlers.
+     *
+     * <p>This method uses ClassGraph to scan the classpath for classes within the given base package
+     * that are annotated with {@link TcpType}. For each such class, it instantiates the class and
+     * iterates through its methods, registering those annotated with {@link JsonProperty} as handlers.
+     * The handler registration involves extracting information about the method's parameters, including
+     * their types, annotations (e.g., {@link JsonArg}, {@link JsonBody}, {@link FromSession}), and
+     * validation constraints. This information is then used to create {@link HandlerMethod} instances,
+     * which are stored in the {@link registry} for later dispatching of TCP requests.
+     *
+     * <p>Additionally, the method collects metadata about each registered handler method, such as its
+     * name, parameter types, return type, declared exceptions, and deprecation status (if applicable).
+     * This metadata is encapsulated in {@link RegisteredMethod} instances and associated with a
+     * {@link RegisteredType} instance, which is then registered with the
+     * {@link DispatcherReportService} for documentation and reporting purposes.
+     *
+     * @param basePackage The base package to scan for TCP handler classes.
+     * @throws RuntimeException If an error occurs during the scanning or registration process.
+     */
     public void scanAndRegister(String basePackage) {
         try (ScanResult result = new ClassGraph()
                 .enableAllInfo()
@@ -107,6 +141,12 @@ public class TcpTypeHandlerRegistry {
         }
     }
 
+        /**
+     * Checks if a parameter has any validation annotations from javax.validation or org.hibernate.validator.
+     *
+     * @param p The parameter to check.
+     * @return True if the parameter has validation annotations, false otherwise.
+     */
     private static boolean hasValidationAnnotations(Parameter p) {
         return Arrays.stream(p.getAnnotations())
                 .anyMatch(a -> {
@@ -115,12 +155,28 @@ public class TcpTypeHandlerRegistry {
                 });
     }
 
+        /**
+     * Finds a handler method based on the given type, key, and value.
+     *
+     * @param type  The type of the handler.
+     * @param key   The key to match.
+     * @param value The value to match.
+     * @return An Optional containing the handler method if found, otherwise empty.
+     */
     public Optional<HandlerMethod> findHandler(String type, String key, String value) {
         return registry.getOrDefault(type, List.of()).stream()
                 .filter(h -> h.key().equalsIgnoreCase(key) && h.value().equalsIgnoreCase(value))
                 .findFirst();
     }
 
+        /**
+     * Resolves the arguments for a given method using a resolver registry.
+     *
+     * @param method The method whose arguments need to be resolved.
+     * @param json A map containing the JSON data used for resolving arguments.
+     * @param session The TcpSession associated with the request.
+     * @return An array of objects representing the resolved arguments for the method.
+     */
     public Object[] resolveArguments(Method method, Map<String, Object> json, TcpSession session) {
         return resolverRegistry.resolveArguments(method.getParameters(), json, session);
     }

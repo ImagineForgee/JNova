@@ -10,33 +10,72 @@ import com.google.gson.Gson;
 
 import java.util.stream.Collectors;
 
+/**
+ * A service class that generates reports about the registered dispatchers,
+ * argument resolvers, and middleware.
+ *
+ * <p>This class provides methods to register types, resolvers, and middleware,
+ * and to generate reports in both raw JSON and human-readable formats.</p>
+ */
 public class DispatcherReportService {
     private static final DispatcherMetadata metadata = new DispatcherMetadata();
     private static final Gson gson = GsonFactory.get();
 
+        /**
+     * Retrieves the dispatcher metadata.
+     *
+     * @return The dispatcher metadata.
+     */
     public static DispatcherMetadata getMetadata() {
         return metadata;
     }
 
+        /**
+         * Registers a new type with the metadata.
+         *
+         * @param type The RegisteredType to be added to the metadata.
+         */
     public static void registerType(RegisteredType type) {
         metadata.types.add(type);
     }
 
+        /**
+     * Registers an argument resolver.
+     *
+     * @param resolver The argument resolver to register.
+     */
     public static void registerResolver(RegisteredArgumentResolver resolver) {
         metadata.argumentResolvers.add(resolver);
     }
 
+        /**
+       * Registers a middleware class by adding its simple name to the middleware metadata.
+       *
+       * @param middlewareClass The class of the middleware to register.
+       */
     public static void registerMiddleware(Class<?> middlewareClass) {
         metadata.middleware.add(middlewareClass.getSimpleName());
     }
 
+
     /**
-     * Output raw JSON report.
+     * Converts the metadata to a JSON string.
+     *
+     * @return a JSON string representation of the metadata.
      */
     public static String toJsonRawReport() {
         return gson.toJson(metadata);
     }
 
+    /**
+     * Generates a detailed report of registered types, handlers, argument resolvers, and middleware.
+     *
+     * The report includes information about registered types and their associated handlers,
+     * methods with parameter details and return types, argument resolvers with supported annotations,
+     * and configured middleware components.
+     *
+     * @return A formatted string containing the report details.
+     */
     public static String toFancyReport() {
         StringBuilder sb = new StringBuilder();
 
@@ -98,6 +137,12 @@ public class DispatcherReportService {
         return sb.toString();
     }
 
+        /**
+     * Extracts the simple name from a fully qualified class name.
+     *
+     * @param fqcn The fully qualified class name.
+     * @return The simple name of the class, or the original string if no package is found.
+     */
     private static String simpleName(String fqcn) {
         int idx = fqcn.lastIndexOf('.');
         return idx >= 0 ? fqcn.substring(idx + 1) : fqcn;

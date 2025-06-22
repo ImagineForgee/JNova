@@ -12,6 +12,8 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter")
 }
 
-tasks.test {
-    useJUnitPlatform()
+tasks.register("generateAllJavadocs") {
+    dependsOn(
+        subprojects.mapNotNull { it.tasks.findByName("generateModuleJavadoc") }
+    )
 }

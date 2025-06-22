@@ -38,3 +38,10 @@ publishing {
         }
     }
 }
+
+tasks.register<Javadoc>("generateModuleJavadoc") {
+    setDestinationDir(file("${rootProject.projectDir}/docs-site/static/api/${project.name}"))
+    source = sourceSets["main"].allJava
+    classpath = sourceSets["main"].compileClasspath
+    isFailOnError = false
+}
