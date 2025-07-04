@@ -10,6 +10,7 @@ import jnova.tcp.TcpSession;
 import jnova.tcp.protocol.TcpMessage;
 
 import java.io.IOException;
+import java.time.Duration;
 
 @TcpType("command")
 public class ExampleHandler {
@@ -18,12 +19,12 @@ public class ExampleHandler {
     public void handlePing(TcpSession session, @JsonArg("args") String[] args) {
         session.touch();
         TcpMessage json = new TcpMessage("keep-alive");
-        session.send(json.toString().getBytes()).subscribe();
+        session.send(json.toString().getBytes()).delayElement(Duration.ofSeconds(10)).subscribe();
     }
 
     @HandlerDeprecated(since = "1988", message = "now")
     @JsonProperty(key = "command", value = "BROADCAST")
-    public void handleBroadcast(@JsonArg("message") BroadcastMessage msg, @Valid TcpSession session) throws IOException {
+    public void handleBroadcast(@JsonArg("message") BroadcastMessage msg, @Valid TcpSession session) {
         System.out.println("Received broadcast model: " + msg);
         session.broadcast((msg.toString() + "\n").getBytes());
     }

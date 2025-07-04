@@ -17,9 +17,13 @@ import jnova.tcp.framing.LineFraming;
 import jnova.tcp.handler.TcpRequestHandler;
 import jnova.tcp.request.TcpBinaryRequest;
 import jnova.tcp.util.KeepAliveMonitor;
-import reactor.core.publisher.Mono;
+import org.reactivestreams.Subscription;
+import reactor.core.publisher.BaseSubscriber;
+import reactor.core.publisher.BufferOverflowStrategy;
+import reactor.core.publisher.SignalType;
 
-import java.io.*;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.time.Duration;
@@ -30,33 +34,30 @@ import java.util.concurrent.*;
 
 /**
  * A TCP server implementation that handles client connections and processes requests.
- *
+ * <p>
  * This class extends the {@link Server} abstract class and provides functionality for
  * accepting client connections, managing sessions, handling requests using a provided
  * {@link TcpRequestHandler}, and applying middleware for request processing. It uses
  * a thread pool to handle multiple concurrent client connections and supports configurable
  * framing strategies for message parsing.
- *
+ * <p>
  * The server also incorporates a keep-alive mechanism to monitor and close idle sessions,
  * and utilizes an event bus for publishing various events related to server lifecycle and
  * session activity.
  */
 public class TcpServer extends Server {
-    private ServerSocket serverSocket;
     private final FramingStrategy framingStrategy;
     private final ExecutorService threadPool;
     private final Map<String, TcpSession> sessionMap = new ConcurrentHashMap<>();
-    private volatile boolean running = false;
-
     private final Duration idleTimeout = Duration.ofSeconds(30);
-    private KeepAliveMonitor keepAliveMonitor;
-
     private final TcpRequestHandler handler;
     private final List<TcpMiddleware> middleware;
-
     private final EventBus eventBus = getEventBus();
+    private ServerSocket serverSocket;
+    private volatile boolean running = false;
+    private KeepAliveMonitor keepAliveMonitor;
 
-        /**
+    /**
      * Constructs a TcpServer with the given request handler, a cached thread pool, line framing, and no initial filters.
      *
      * @param handler The request handler to use for processing incoming TCP requests.
@@ -65,24 +66,24 @@ public class TcpServer extends Server {
         this(handler, Executors.newCachedThreadPool(), new LineFraming(), List.of());
     }
 
-        /**
+    /**
      * Constructs a new TcpServer with the specified request handler, executor pool, and framing strategy.
      *
-     * @param handler The request handler to use for processing incoming TCP requests.
-     * @param pool The executor service to use for managing threads that handle requests.
+     * @param handler         The request handler to use for processing incoming TCP requests.
+     * @param pool            The executor service to use for managing threads that handle requests.
      * @param framingStrategy The framing strategy to use for delineating messages.
      */
     public TcpServer(TcpRequestHandler handler, ExecutorService pool, FramingStrategy framingStrategy) {
         this(handler, pool, framingStrategy, List.of());
     }
 
-        /**
+    /**
      * Constructs a new TcpServer.
      *
-     * @param handler The request handler for processing incoming TCP requests.
-     * @param pool The executor service for managing threads.
+     * @param handler         The request handler for processing incoming TCP requests.
+     * @param pool            The executor service for managing threads.
      * @param framingStrategy The strategy for framing TCP messages.
-     * @param middleware A list of middleware to be executed on each request. Can be null or empty.
+     * @param middleware      A list of middleware to be executed on each request. Can be null or empty.
      */
     public TcpServer(TcpRequestHandler handler, ExecutorService pool, FramingStrategy framingStrategy, List<TcpMiddleware> middleware) {
         this.handler = handler;
@@ -91,7 +92,7 @@ public class TcpServer extends Server {
         this.middleware = middleware != null ? middleware : List.of();
     }
 
-        /**
+    /**
      * Starts the TCP server, listening for incoming client connections on the specified port.
      *
      * <p>This method initializes the server socket, starts a keep-alive monitor,
@@ -132,9 +133,9 @@ public class TcpServer extends Server {
         }
     }
 
-        /**
+    /**
      * Stops the TCP server, closing resources and notifying clients.
-     *
+     * <p>
      * This method performs the following actions:
      * 1. Sets the `running` flag to false, indicating the server is no longer active.
      * 2. Closes the `serverSocket` to prevent new connections.
@@ -176,7 +177,7 @@ public class TcpServer extends Server {
                 .build());
     }
 
-        /**
+    /**
      * Handles a client connection on the given socket.
      *
      * <p>This method manages the lifecycle of a TCP session, including establishing the session,
@@ -206,59 +207,76 @@ public class TcpServer extends Server {
 
             framingStrategy.readMessages(in)
                     .timeout(idleTimeout)
-                    .flatMap(messageBytes -> {
-                        session.touch();
+                    .onBackpressureBuffer(
+                            1,
+                            dropped -> System.err.println("[" + sessionId + "] Dropped message due to backpressure"),
+                            BufferOverflowStrategy.DROP_OLDEST
+                    )
+                    .subscribeWith(new BaseSubscriber<byte[]>() {
+                        @Override
+                        protected void hookOnSubscribe(Subscription subscription) {
+                            request(1);
+                        }
 
-                        eventBus.emit(EventBuilder.ofType(EventType.TCP_MESSAGE_RECEIVED, TcpMessageReceivedEvent::new)
-                                .fromSource(session)
-                                .with("sessionId", sessionId)
-                                .with("message", messageBytes)
-                                .build());
-
-                        TcpBinaryRequest request = new TcpBinaryRequest(messageBytes, session);
-                        return handler.handle(request)
-                                .flatMap(response -> session.send(response.getBytes()))
-                                .onErrorResume(e -> {
-                                    middleware.forEach(mw -> mw.onException(e, null, session));
-                                    System.err.println("[" + sessionId + "] Handler error: " + e.getMessage());
-                                    return Mono.empty();
-                                });
-                    })
-                    .doOnError(TimeoutException.class, e -> {
-                        middleware.forEach(mw -> mw.onTimeout(session));
-                        System.out.println("[" + sessionId + "] Idle timeout reached. Closing session.");
-                    })
-                    .doOnError(e -> {
-                        if (!(e instanceof TimeoutException)) {
-                            middleware.forEach(mw -> mw.onProtocolError(e, session));
-                            System.err.println("[" + sessionId + "] Unexpected error: " + e.getMessage());
-                            eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_ERROR, TcpSessionErrorEvent::new)
+                        @Override
+                        protected void hookOnNext(byte[] messageBytes) {
+                            eventBus.emit(EventBuilder.ofType(EventType.TCP_MESSAGE_RECEIVED, TcpMessageReceivedEvent::new)
                                     .fromSource(session)
                                     .with("sessionId", sessionId)
-                                    .with("error", e)
+                                    .with("message", messageBytes)
                                     .build());
+
+                            TcpBinaryRequest request = new TcpBinaryRequest(messageBytes, session);
+
+                            handler.handle(request)
+                                    .flatMap(response -> session.send(response.getBytes()))
+                                    .delayElement(Duration.ofSeconds(10))
+                                    .doOnError(e -> {
+                                        middleware.forEach(mw -> mw.onException(e, null, session));
+                                        System.err.println("[" + sessionId + "] Handler error: " + e.getMessage());
+                                    })
+                                    .doOnTerminate(() -> request(1))
+                                    .subscribe();
                         }
-                    })
-                    .doFinally(signal -> {
-                        sessionMap.remove(sessionId);
-                        System.out.println("[" + sessionId + "] Session closing due to: " + signal);
 
-                        middleware.forEach(mw -> mw.onDisconnect(session));
-
-                        eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_CLOSE, TcpSessionCloseEvent::new)
-                                .fromSource(session)
-                                .with("sessionId", sessionId)
-                                .with("reason", signal.name())
-                                .build());
-
-                        try {
-                            session.close();
-                        } catch (IOException e) {
-                            System.err.println("[" + sessionId + "] Error during session close: " + e.getMessage());
+                        @Override
+                        protected void hookOnError(Throwable e) {
+                            if (e instanceof TimeoutException) {
+                                middleware.forEach(mw -> mw.onTimeout(session));
+                                System.out.println("[" + sessionId + "] Idle timeout reached. Closing session.");
+                            } else {
+                                middleware.forEach(mw -> mw.onProtocolError(e, session));
+                                System.err.println("[" + sessionId + "] Unexpected error: " + e.getMessage());
+                                eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_ERROR, TcpSessionErrorEvent::new)
+                                        .fromSource(session)
+                                        .with("sessionId", sessionId)
+                                        .with("error", e)
+                                        .build());
+                            }
                         }
-                        latch.countDown();
-                    })
-                    .subscribe();
+
+                        @Override
+                        protected void hookFinally(SignalType signalType) {
+                            sessionMap.remove(sessionId);
+                            System.out.println("[" + sessionId + "] Session closing due to: " + signalType);
+
+                            middleware.forEach(mw -> mw.onDisconnect(session));
+
+                            eventBus.emit(EventBuilder.ofType(EventType.TCP_SESSION_CLOSE, TcpSessionCloseEvent::new)
+                                    .fromSource(session)
+                                    .with("sessionId", sessionId)
+                                    .with("reason", signalType.name())
+                                    .build());
+
+                            try {
+                                session.close();
+                            } catch (IOException e) {
+                                System.err.println("[" + sessionId + "] Error during session close: " + e.getMessage());
+                            }
+
+                            latch.countDown();
+                        }
+                    });
 
             latch.await();
         } catch (IOException e) {

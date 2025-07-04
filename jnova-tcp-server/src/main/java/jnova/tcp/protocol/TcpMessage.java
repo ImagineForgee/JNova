@@ -15,7 +15,7 @@ public class TcpMessage {
     public String from;
     public String content;
 
-    private static final Gson gson = GsonFactory.get();
+    private static final Gson gson = new Gson();
 
         /**
      * Constructs a new TcpMessage object.

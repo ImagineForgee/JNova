@@ -9,6 +9,7 @@ import jnova.tcp.dispatching.resolvers.JsonArgResolver;
 import jnova.tcp.dispatching.resolvers.JsonBodyResolver;
 import jnova.tcp.events.TcpMessageReceivedEvent;
 import jnova.tcp.framing.DelimiterFraming;
+import jnova.tcp.framing.LineFraming;
 import jnova.tcp.handler.HandlerEnum;
 import jnova.tcp.handler.TcpRequestHandler;
 import jnova.tcp.routing.commands.DispatcherFactory;
@@ -26,7 +27,7 @@ public class CommandHandler {
                 .resolvers(List.of(new JsonArgResolver(), new FromSessionResolver(), new JsonBodyResolver()))
                 .handlerType(HandlerEnum.JSON)
                 .build();
-        TcpServer server = new TcpServer(handler, Executors.newCachedThreadPool(), new DelimiterFraming('\n'));
+        TcpServer server = new TcpServer(handler);
         EventBus eventBus = Server.getEventBus();
         eventBus.onEvent(ServerStartEvent.class).subscribe(e ->
                 System.out.println(DispatcherReportService.toFancyReport()));

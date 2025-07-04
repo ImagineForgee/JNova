@@ -5,6 +5,7 @@ import jnova.core.session.Session;
 import jnova.tcp.framing.FramingStrategy;
 import jnova.tcp.protocol.TcpMessage;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.*;
 import java.net.Socket;
@@ -53,17 +54,13 @@ public class TcpSession implements Session {
      * @return A {@code Mono<Void>} that completes when the message has been written to the socket.
      *         Any IOException during writing will be propagated as an UncheckedIOException.
      */
-    public Mono<Void> send(byte[] message) {
-        return Mono.fromRunnable(() -> {
-            synchronized (writeLock) {
-                try {
-                    framingStrategy.writeMessage(socket.getOutputStream(), message);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-            }
-        });
-    }
+        public Mono<Void> send(byte[] message) {
+            return Mono.fromCallable(() -> {
+                        framingStrategy.writeMessage(socket.getOutputStream(), message);
+                        return null;
+                    })
+                    .subscribeOn(Schedulers.boundedElastic()).then();
+        }
 
         /**
      * Broadcasts a message to all currently active TCP sessions.

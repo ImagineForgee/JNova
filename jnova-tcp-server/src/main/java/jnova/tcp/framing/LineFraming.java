@@ -1,10 +1,12 @@
 package jnova.tcp.framing;
 
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.util.function.Consumer;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 /**
  * A {@link FramingStrategy} that frames messages based on line boundaries.
@@ -14,9 +16,9 @@ import java.util.function.Consumer;
  */
 public class LineFraming implements FramingStrategy {
 
-        /**
+    /**
      * Reads messages from the given InputStream and emits them as a Flux of byte arrays.
-     *
+     * <p>
      * Each line read from the input stream is converted to a byte array using UTF-8 encoding
      * and emitted as a separate element in the Flux. The Flux completes when the end of the
      * input stream is reached or an error occurs.
@@ -26,20 +28,35 @@ public class LineFraming implements FramingStrategy {
      */
     @Override
     public Flux<byte[]> readMessages(InputStream input) {
-        return Flux.create(sink -> {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+        BlockingQueue<String> queue = new LinkedBlockingQueue<>();
+        BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+
+        Schedulers.boundedElastic().schedule(() -> {
+            try {
                 String line;
-                while ((line = reader.readLine()) != null && !sink.isCancelled()) {
+                while ((line = reader.readLine()) != null) {
+                    queue.put(line);
+                }
+            } catch (IOException | InterruptedException e) {
+                queue.offer("__EOF__");
+            }
+        });
+
+        return Flux.generate(sink -> {
+            try {
+                String line = queue.take();
+                if ("__EOF__".equals(line)) {
+                    sink.complete();
+                } else {
                     sink.next(line.getBytes(StandardCharsets.UTF_8));
                 }
-                sink.complete();
-            } catch (Throwable e) {
+            } catch (InterruptedException e) {
                 sink.error(e);
             }
         });
     }
 
-        /**
+    /**
      * Writes a message to the given output stream, followed by a newline character.
      *
      * @param output  The output stream to write to.
@@ -52,4 +69,5 @@ public class LineFraming implements FramingStrategy {
         output.write('\n');
         output.flush();
     }
+
 }
